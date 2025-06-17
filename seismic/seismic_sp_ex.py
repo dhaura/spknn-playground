@@ -5,9 +5,15 @@ import ir_datasets
 import ir_measures
 from ir_measures import *
 import time
+import argparse
+
+parser = argparse.ArgumentParser(description="Run Seismic index example.")
+parser.add_argument("-input", type=str, help="Path to the JSON input file.")
+parser.add_argument("-query", type=str, help="Path to the query file.")
+args = parser.parse_args()
 
 # Splade embeddings for MSMARCO passage.
-json_input_file = "/pscratch/sd/d/dhaura/datasets/SpKNN/seismic/example/docs_anserini.jsonl"
+json_input_file = args.input
 
 # Build Seismic index.
 t0 = time.time()
@@ -21,7 +27,7 @@ print("Dimensionality of the vectors:", index.dim)
 index.print_space_usage_byte()
 
 # Load queries from a TSV file.
-queries_path = "/pscratch/sd/d/dhaura/datasets/SpKNN/seismic/example/queries_anserini.tsv"
+queries_path = args.query
 
 print("Loading queries...")
 count = 0
@@ -70,6 +76,5 @@ print(f"Search completed in {t3 - t2:.2f} seconds.")
 ir_results = [ir_measures.ScoredDoc(query_id, doc_id, score) for r in results for (query_id, score, doc_id) in r]
 qrels = ir_datasets.load('msmarco-passage/dev/small').qrels
 
-rr10 = ir_measures.calc_aggregate([RR@10], qrels, ir_results)
-
-print(f"RR@10: {rr10:.4f}")
+# rr10 = ir_measures.calc_aggregate([RR@10], qrels, ir_results)
+# print(f"RR@10: {rr10:.4f}")
