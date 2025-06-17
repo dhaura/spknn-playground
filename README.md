@@ -56,5 +56,26 @@ source $SCRATCH/benchmarks/SpKNN/GrassRMA/venv/bin/activate
 pip install numpy
 ```
 
+## PyANNS
+
+> Requires AVX-512 instruction which is only availbale in intel CPUs and not available with AMD CPUs and thus, cannot run in NERSC.
+
+Build PyANNS module in TAMU Grace Cluster.
+```bash
+git clone https://github.com/hhy3/pyanns.git
+cd pyanns
+module load GCCcore/14.2.0
+module load Python/3.13.1
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+chmod +x build.sh
+pip install setuptools
+./build.sh
+```
+
+
+
 ### NeurIPS BigANN 23 Datasets
 https://github.com/harsha-simhadri/big-ann-benchmarks/blob/main/dataset_preparation/sparse_dataset.md
+
