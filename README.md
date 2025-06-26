@@ -74,6 +74,21 @@ pip install setuptools
 ./build.sh
 ```
 
+## kANNolo
+
+Run these from ` $SCRATCH/benchmarks/SpKNN/forks/kannolo`.
+
+```bash
+rustup install nightly
+rustup override set nightly
+rustup default nightly
+module load cray-hdf5/1.12.2.9
+source venv/bin/activate
+pip install -r scripts/requirements.txt
+RUSTFLAGS="-C target-cpu=native" pip install --no-binary :all: kannolo
+```
+
+Git repo experiments - https://github.com/TusKANNy/kannolo/blob/main/docs/RunExperiments.md
 
 
 ### NeurIPS BigANN 23 Datasets
