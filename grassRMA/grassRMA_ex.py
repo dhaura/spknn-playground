@@ -43,8 +43,6 @@ print("Index saved.")
 # p.load_index(output_path, n)
 # print("Index loaded.")
 
-p.set_ef(48)
-
 def knn_result_read(fname):
     n, d = map(int, np.fromfile(fname, dtype="uint32", count=2))
     f = open(fname, "rb")
@@ -70,13 +68,33 @@ data, indices, indptr, _ = mmap_sparse_matrix_fields(query_path)
 
 I, _ = knn_result_read(gt_path)
 
-print("Running kNN query...")
-start = time.time()
-res, distances = p.knn_query(indptr, indices, data, k=10, num_threads=num_threads)
-end = time.time()
-print("kNN query completed.")
+for ef in range(48, 450, 50):
+    print(f"Setting ef to {ef}...")
+    p.set_ef(ef)
+    
+    print("Running kNN query...")
+    start = time.time()
+    res, distances = p.knn_query(indptr, indices, data, k=10, num_threads=num_threads)
+    end = time.time()
+    print("kNN query completed.")
 
-elapsed = end - start
-intersection_sizes = np.array([np.intersect1d(row1, row2).size for row1, row2 in zip(I, res)])
-print(f'Elapsed time: {elapsed}; {round(I.shape[0] /elapsed, 2)} QPS')
-print(f'Recall: {np.sum(intersection_sizes) / (I.shape[0] * I.shape[1]) * 100}')
+    elapsed = end - start
+    intersection_sizes = np.array([np.intersect1d(row1, row2).size for row1, row2 in zip(I, res)])
+    print(f'Elapsed time: {elapsed}; {round(I.shape[0] /elapsed, 2)} QPS')
+    print(f'Recall: {np.sum(intersection_sizes) / (I.shape[0] * I.shape[1]) * 100}')
+
+    rr_at_10 = 0.0
+    for gt, pred in zip(I, res):
+        # Find the first relevant item in the top-10 predictions
+        found = False
+        for rank, item in enumerate(pred[:10], start=1):
+            if item in gt:
+                rr_at_10 += 1.0 / rank
+                found = True
+                break
+        if not found:
+            rr_at_10 += 0.0
+
+    rr_at_10 /= I.shape[0]
+    print(f'RR@10: {rr_at_10:.4f}\n')
+

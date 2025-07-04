@@ -60,7 +60,7 @@ for query in queries:
     query_values.append(np.array(list(vector.values()), dtype=np.float32))
 
     results = index.batch_search(
-    queries_ids=queries_ids,
+        queries_ids=queries_ids,
         query_components=query_components,
         query_values=query_values,
         k=10,

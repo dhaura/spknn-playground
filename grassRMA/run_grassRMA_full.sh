@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH --qos=preempt
-#SBATCH --time=02:00:00
+#SBATCH --qos=regular
+#SBATCH --time=03:00:00
 #SBATCH --nodes=1
 #SBATCH --constraint=cpu
 #SBATCH --output=logs/%j.log
