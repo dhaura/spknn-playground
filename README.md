@@ -90,6 +90,16 @@ RUSTFLAGS="-C target-cpu=native" pip install --no-binary :all: kannolo
 
 Git repo experiments - https://github.com/TusKANNy/kannolo/blob/main/docs/RunExperiments.md
 
+## HiC Cell SpKNN
+
+```bash
+module load conda
+conda create -n hicspknn python=3.10
+conda activate hicspknn
+conda install sparse-neighbors-search -c bioconda
+conda install pytest
+```
+
 
 ### NeurIPS BigANN 23 Datasets
 https://github.com/harsha-simhadri/big-ann-benchmarks/blob/main/dataset_preparation/sparse_dataset.md
