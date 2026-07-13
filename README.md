@@ -74,6 +74,21 @@ pip install setuptools
 ./build.sh
 ```
 
+## SINDI (vsag)
+
+```bash
+python3 -m venv $SCRATCH/benchmarks/SpKNN/vsag-venv
+source $SCRATCH/benchmarks/SpKNN/vsag-venv/bin/activate
+pip install pyvsag numpy scipy
+```
+
+Run it:
+
+```bash
+cd sindi
+sbatch run_sindi_full.sh
+```
+
 ## kANNolo
 
 Run these from ` $SCRATCH/benchmarks/SpKNN/forks/kannolo`.
