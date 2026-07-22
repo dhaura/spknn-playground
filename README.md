@@ -89,6 +89,20 @@ cd sindi
 sbatch run_sindi_full.sh
 ```
 
+## Multithreaded benchmarks (Seismic + kANNolo)
+
+```bash
+module load python/3.10
+python3 -m venv $SCRATCH/benchmarks/SpKNN/mt-venv
+source $SCRATCH/benchmarks/SpKNN/mt-venv/bin/activate
+pip install kannolo pyseismic-lsr numpy scipy
+```
+
+```bash
+cd kannolo && sbatch run_kannolo_mt.sh 64 && sbatch run_kannolo_mt.sh 128
+cd seismic && sbatch run_seismic_mt.sh 64 && sbatch run_seismic_mt.sh 128
+```
+
 ## kANNolo
 
 Run these from ` $SCRATCH/benchmarks/SpKNN/forks/kannolo`.

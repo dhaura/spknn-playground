@@ -30,6 +30,17 @@ def knn_result_read(fname):
     return I
 
 
+def rr_at_k(gt, pred, k):
+    total = 0.0
+    for g, p in zip(gt, pred):
+        g_set = set(g.tolist())
+        for rank, item in enumerate(p[:k], start=1):
+            if item in g_set:
+                total += 1.0 / rank
+                break
+    return total / gt.shape[0]
+
+
 indexing_time = 0.0
 if args.index and os.path.exists(args.index):
     print(f"Loading index from {args.index}...")
@@ -78,10 +89,12 @@ for query_cut, heap_factor in [
     res, elapsed = run(query_cut, heap_factor)
     intersections = np.array([np.intersect1d(a, b).size for a, b in zip(I[:, :k], res)])
     recall = intersections.sum() / (I.shape[0] * k)
+    rr = rr_at_k(I[:, :k], res, k)
     qps = n_queries / elapsed
     print(f"Elapsed: {elapsed:.4f}s; {qps:.2f} QPS at {nt} threads")
-    print(f"Recall@{k}: {recall * 100:.4f}\n")
-    rows.append(("SEISMIC", nt, query_cut, heap_factor, recall, indexing_time, elapsed, qps))
+    print(f"Recall@{k}: {recall * 100:.4f}")
+    print(f"RR@{k} (vs exact-NN gt): {rr:.4f}\n")
+    rows.append(("SEISMIC", nt, query_cut, heap_factor, recall, indexing_time, elapsed, qps, rr))
 
 if args.csv:
     write_header = not os.path.exists(args.csv)
@@ -90,7 +103,7 @@ if args.csv:
         if write_header:
             w.writerow(
                 ["Model", "Threads", "query_cut", "heap_factor", "Recall",
-                 "Indexing Time", "Searching Time (Seconds)", "QPS"]
+                 "Indexing Time", "Searching Time (Seconds)", "QPS", "RR@10 (vs exact-NN gt)"]
             )
         w.writerows(rows)
     print(f"Results appended to {args.csv}")

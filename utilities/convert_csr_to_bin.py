@@ -1,56 +1,45 @@
-import struct
-import numpy as np
-from scipy.sparse import csr_matrix
 import argparse
 
-parser = argparse.ArgumentParser(description="Convert .csr files to .bin files.")
-parser.add_argument("-file_path", type=str)
-parser.add_argument("-output_path", type=str)
+import numpy as np
+
+parser = argparse.ArgumentParser(description="Convert BigANN .csr files to Seismic/kANNolo .bin files.")
+parser.add_argument("-file_path", type=str, required=True)
+parser.add_argument("-output_path", type=str, required=True)
 args = parser.parse_args()
 
-file_path = args.file_path
-output_path = args.output_path
-
-def convertz_csr_to_bin(csr_file_path, bin_file_path):
+def convert_csr_to_bin(csr_file_path, bin_file_path, chunk_rows=500_000):
     with open(csr_file_path, "rb") as f:
-        # Read header: 3 uint64 values
-        n_rows = np.fromfile(f, dtype=np.uint64, count=1)[0]
-        n_cols = np.fromfile(f, dtype=np.uint64, count=1)[0]
-        nnz = np.fromfile(f, dtype=np.uint64, count=1)[0]
-
+        n_rows, n_cols, nnz = np.fromfile(f, dtype=np.int64, count=3)
         print(f"n_rows = {n_rows}, n_cols = {n_cols}, nnz = {nnz}")
+        indptr = np.fromfile(f, dtype=np.int64, count=n_rows + 1)
+        indices_off = 24 + indptr.nbytes
+    indices = np.memmap(csr_file_path, dtype=np.int32, mode="r", offset=indices_off, shape=nnz)
+    data = np.memmap(csr_file_path, dtype=np.float32, mode="r", offset=indices_off + indices.nbytes, shape=nnz)
 
-        # Read indptr: (n_rows + 1) uint64
-        indptr = np.fromfile(f, dtype=np.uint64, count=n_rows + 1)
+    with open(bin_file_path, "wb") as out:
+        np.array([n_rows], dtype=np.uint32).tofile(out)
 
-        # Read indices: nnz uint32
-        indices = np.fromfile(f, dtype=np.uint32, count=nnz)
+        for lo in range(0, n_rows, chunk_rows):
+            hi = min(lo + chunk_rows, n_rows)
+            ptr = indptr[lo : hi + 1] - indptr[lo]
+            counts = np.diff(ptr).astype(np.int64)
+            c_nnz = int(ptr[-1])
+            c_ind = np.asarray(indices[indptr[lo] : indptr[hi]], dtype=np.uint32)
+            c_val = np.asarray(data[indptr[lo] : indptr[hi]], dtype=np.float32)
 
-        # Read data: nnz float32
-        data = np.fromfile(f, dtype=np.float32, count=nnz)
+            # Per row r: [count, ids..., values...] laid out in one u32 buffer.
+            n = hi - lo
+            buf = np.empty(n + 2 * c_nnz, dtype=np.uint32)
+            starts = np.arange(n, dtype=np.int64) + 2 * ptr[:-1]  # row start in buf
+            buf[starts] = counts.astype(np.uint32)
+            within = np.arange(c_nnz, dtype=np.int64) - np.repeat(ptr[:-1], counts)
+            pos_ids = np.repeat(starts + 1, counts) + within
+            buf[pos_ids] = c_ind
+            buf[pos_ids + np.repeat(counts, counts)] = c_val.view(np.uint32)
+            buf.tofile(out)
+            print(f"  rows {lo}..{hi} written ({c_nnz} nnz)")
 
-    # Reconstruct CSR matrix
-    csr = csr_matrix((data, indices, indptr), shape=(n_rows, n_cols))
+    print(f"Wrote {bin_file_path}")
 
-    # Write to binary file in specified format
-    with open(bin_file_path, 'wb') as out:
-        # Write total number of vectors (rows) as uint32
-        out.write(struct.pack('<I', csr.shape[0]))
 
-        for i in range(csr.shape[0]):
-            start = csr.indptr[i]
-            end = csr.indptr[i + 1]
-            row_indices = csr.indices[start:end]
-            row_data = csr.data[start:end]
-
-            # Write number of nonzero components
-            out.write(struct.pack('<I', len(row_indices)))
-
-            # Write indices (uint32)
-            out.write(struct.pack('<' + 'I' * len(row_indices), *row_indices))
-
-            # Write values (float32)
-            out.write(struct.pack('<' + 'f' * len(row_data), *row_data))
-
-convert_csr_to_bin(file_path, output_path)
- 
+convert_csr_to_bin(args.file_path, args.output_path)
