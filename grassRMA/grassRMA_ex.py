@@ -1,6 +1,8 @@
 import sparse_hnswlib
 import numpy as np
 import argparse
+import csv
+import os
 import time
 
 parser = argparse.ArgumentParser(description="Run kNN search on a sparse HNSW index.")
@@ -11,6 +13,7 @@ parser.add_argument("-input", type=str, help="Path to the input CSR file.")
 parser.add_argument("-query", type=str, help="Path to the query CSR file.")
 parser.add_argument("-gt", type=str, help="Path to the ground truth file.")
 parser.add_argument("-output", type=str, help="Path to the output directory.")
+parser.add_argument("-csv", type=str, help="Optional path to append results as CSV rows.")
 args = parser.parse_args()
 
 n = args.n
@@ -68,10 +71,11 @@ data, indices, indptr, _ = mmap_sparse_matrix_fields(query_path)
 
 I, _ = knn_result_read(gt_path)
 
+rows = []
 for ef in range(48, 450, 50):
     print(f"Setting ef to {ef}...")
     p.set_ef(ef)
-    
+
     print("Running kNN query...")
     start = time.time()
     res, distances = p.knn_query(indptr, indices, data, k=10, num_threads=num_threads)
@@ -80,8 +84,10 @@ for ef in range(48, 450, 50):
 
     elapsed = end - start
     intersection_sizes = np.array([np.intersect1d(row1, row2).size for row1, row2 in zip(I, res)])
-    print(f'Elapsed time: {elapsed}; {round(I.shape[0] /elapsed, 2)} QPS')
-    print(f'Recall: {np.sum(intersection_sizes) / (I.shape[0] * I.shape[1]) * 100}')
+    recall = np.sum(intersection_sizes) / (I.shape[0] * I.shape[1])
+    qps = I.shape[0] / elapsed
+    print(f'Elapsed time: {elapsed}; {round(qps, 2)} QPS')
+    print(f'Recall: {recall * 100}')
 
     rr_at_10 = 0.0
     for gt, pred in zip(I, res):
@@ -97,4 +103,17 @@ for ef in range(48, 450, 50):
 
     rr_at_10 /= I.shape[0]
     print(f'RR@10: {rr_at_10:.4f}\n')
+    rows.append(("GrassRMA", num_threads, ef, recall, t1 - t0, elapsed, qps, rr_at_10))
+
+if args.csv:
+    write_header = not os.path.exists(args.csv)
+    with open(args.csv, "a", newline="") as f:
+        w = csv.writer(f)
+        if write_header:
+            w.writerow(
+                ["Model", "Threads", "ef", "Recall",
+                 "Indexing Time", "Searching Time (Seconds)", "QPS", "RR@10"]
+            )
+        w.writerows(rows)
+    print(f"Results appended to {args.csv}")
 
