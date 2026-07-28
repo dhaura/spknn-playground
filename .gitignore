@@ -195,3 +195,8 @@ cython_debug/
 
 # Datsets
 */datasets
+
+# Logs
+*.log
+*.out
+*.err

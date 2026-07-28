@@ -1,9 +1,22 @@
 # spknn-playground
 
+## Running the benchmark
+
 ```bash
-module load python/3.10
-python3 -m venv venv
-source venv/bin/activate
+module purge && module load GCCcore/13.2.0 Python/3.11.5
+source /scratch/user/dhaura/benchmarks/SpKNN/bench-venv/bin/activate
+```
+
+
+```bash
+sbatch common/smoke_test.sh                       # correctness, msmarco_small
+sbatch grassRMA/run_grassRMA_grace.sh             # then the full sweeps
+sbatch kannolo/run_kannolo_grace.sh
+sbatch seismic/run_seismic_grace.sh
+sbatch pyanns/run_pyanns_grace.sh
+cd ../minimal_hnsw/sparse/scripts
+sbatch run_hnsw_sweep.sh                          # SPARSE_HNSW (C++)
+sbatch run_sindi_sweep.sh                         # SINDI (C++)
 ```
 
 ## UMAP
