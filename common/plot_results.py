@@ -76,6 +76,23 @@ def num(row, col):
         return float("nan")
 
 
+def frontier(rows):
+    """Keep only points not dominated on (recall, QPS): higher is better on both.
+    """
+    pts = [(num(r, "Recall"), num(r, "QPS"), r) for r in rows]
+    keep, seen = [], set()
+    for rec, qps, r in pts:
+        if any(orec >= rec and oqps >= qps and (orec > rec or oqps > qps)
+               for orec, oqps, _ in pts):
+            continue
+        key = (round(rec, 12), round(qps, 6))
+        if key in seen:                 # ties on both axes: keep one
+            continue
+        seen.add(key)
+        keep.append(r)
+    return keep
+
+
 def order_models(rows):
     """Stable, deterministic series order: subject first, then alphabetical.
     """
@@ -223,9 +240,23 @@ def main():
     ap.add_argument("-o", "--outdir", required=True)
     ap.add_argument("--xmin", type=float, default=None,
                     help="left edge of the recall axis; default auto-zooms")
+    ap.add_argument("--pareto", action="store_true",
+                    help="plot only the (recall, QPS) frontier of each method, "
+                         "dropping dominated points; applied to EVERY method")
     args = ap.parse_args()
 
     rows = read(args.input)
+    if args.pareto:
+        by_model = defaultdict(list)
+        for r in rows:
+            by_model[r["Model"]].append(r)
+        kept = []
+        print("pareto filter (recall, QPS), all methods:")
+        for m in sorted(by_model):
+            f = frontier(by_model[m])
+            print(f"  {m:<12} {len(by_model[m]):3d} points -> {len(f):3d} on the frontier")
+            kept += f
+        rows = kept
     os.makedirs(args.outdir, exist_ok=True)
     models = order_models(rows)
     st = style(models)
