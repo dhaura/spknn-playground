@@ -20,7 +20,10 @@ parser.add_argument("-gt", required=True)
 parser.add_argument("-csv", required=True)
 parser.add_argument("-index", required=True, help="Index path passed to SparseGrapSearcher.")
 parser.add_argument("-k", type=int, default=10)
-parser.add_argument("-ef", type=int, default=80)
+parser.add_argument("-ef", type=int, default=80,
+                    help="Single ef; ignored when -ef_list is given.")
+parser.add_argument("-ef_list", default=None,
+                    help="Comma-separated ef values to sweep.")
 parser.add_argument("-budgets", default="0.005,0.01,0.02,0.03,0.05,0.07,0.1,0.15,0.2,0.3,0.5,0.8")
 parser.add_argument("-repeats", type=int, default=5)
 parser.add_argument("-warmup", type=int, default=1)
@@ -31,8 +34,11 @@ args = parser.parse_args()
 threads = bh.env_threads()
 k = args.k
 budgets = [float(b) for b in args.budgets.split(",") if b]
+ef_list = ([int(e) for e in args.ef_list.split(",") if e]
+           if args.ef_list else [args.ef])
 
-print(f"PyANNS | ef={args.ef} threads={threads} rescore={not args.no_rescore}", flush=True)
+print(f"PyANNS | ef={','.join(map(str, ef_list))} threads={threads} "
+      f"rescore={not args.no_rescore}", flush=True)
 
 with bh.phase("load (page-cache warm)") as p_load:
     with open(args.input, "rb") as f:
@@ -41,7 +47,6 @@ with bh.phase("load (page-cache warm)") as p_load:
 
 with bh.phase("index") as p_index:
     searcher = pyanns.SparseGrapSearcher(args.input, args.index)
-searcher.set_ef(args.ef)
 
 print(f"  peak RSS after indexing: {bh.peak_rss_gb():.1f} GB", flush=True)
 
@@ -82,40 +87,44 @@ def rescore(pred: np.ndarray) -> np.ndarray:
     return out
 
 
-print(f"  {n_queries} queries, k={k}, budgets {budgets}\n", flush=True)
+print(f"  {n_queries} queries, k={k}, {len(ef_list)}x{len(budgets)} "
+      f"(ef, budget) points\n", flush=True)
 
 index_bytes = bh.path_bytes(args.index)
 
 rows = []
-for budget in budgets:
-    def run():
-        return searcher.search_batch(n_queries, q_indptr, q_indices, q_data, k, budget)
+for ef in ef_list:
+    searcher.set_ef(ef)
+    for budget in budgets:
+        def run(budget=budget):
+            return searcher.search_batch(n_queries, q_indptr, q_indices, q_data, k, budget)
 
-    raw, med, times = bh.timed_search(
-        run, repeats=args.repeats, warmup=args.warmup, label=f"budget={budget}"
-    )
-    pred_raw = np.asarray(raw).reshape(n_queries, k)
-    pred = rescore(pred_raw)
+        raw, med, times = bh.timed_search(
+            run, repeats=args.repeats, warmup=args.warmup,
+            label=f"ef={ef} budget={budget}"
+        )
+        pred_raw = np.asarray(raw).reshape(n_queries, k)
+        pred = rescore(pred_raw)
 
-    row = bh.make_row(
-        model="PyANNS",
-        params=f"ef={args.ef} budget={budget}"
-               f"{'' if not args.no_rescore else ' (unranked)'}",
-        threads=threads,
-        gt=gt,
-        pred=pred,
-        k=k,
-        index_sec=p_index.sec,
-        load_sec=p_load.sec,
-        convert_sec=0.0,
-        search_times=times,
-        index_bytes=index_bytes,
-        results_ordered=not args.no_rescore,
-    )
-    bh.print_point(row)
-    if row.RR_at_10 < row.Recall - 1e-9:
-        print("    WARNING: RR@k < recall@k even after re-ranking -- investigate.",
-              flush=True)
-    rows.append(row)
+        row = bh.make_row(
+            model="PyANNS",
+            params=f"ef={ef} budget={budget}"
+                   f"{'' if not args.no_rescore else ' (unranked)'}",
+            threads=threads,
+            gt=gt,
+            pred=pred,
+            k=k,
+            index_sec=p_index.sec,
+            load_sec=p_load.sec,
+            convert_sec=0.0,
+            search_times=times,
+            index_bytes=index_bytes,
+            results_ordered=not args.no_rescore,
+        )
+        bh.print_point(row)
+        if row.RR_at_10 < row.Recall - 1e-9:
+            print("    WARNING: RR@k < recall@k even after re-ranking -- investigate.",
+                  flush=True)
+        rows.append(row)
 
 bh.write_rows(args.csv, rows)
