@@ -89,7 +89,7 @@ sbatch common/smoke_test.sh
 sbatch grassRMA/run_grassRMA_grace.sh
 sbatch kannolo/run_kannolo_grace.sh
 sbatch seismic/run_seismic_grace.sh
-sbatch pyanns/run_pyanns_grace.sh
+sbatch --export=ALL,REBUILD_INDEX=1 pyanns/run_pyanns_grace.sh
 ```
 
 ---
