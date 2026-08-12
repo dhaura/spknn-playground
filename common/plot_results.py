@@ -34,10 +34,17 @@ AXIS = "#c3c2b7"
 
 # Reference categorical palette, fixed order. Validated for the adjacent
 # pairlist in light mode: all hard checks PASS.
-SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"]
-MARKERS = ["o", "s", "^", "D", "v", "P"]
+SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300",
+          "#7b52d1", "#00868b", "#b3442e"]
+MARKERS = ["o", "s", "^", "D", "v", "P", "X", "*", "h"]
 
 SUBJECT = "SparseHNSW"
+
+
+def is_subject_model(m):
+    """Any SparseHNSW variant, e.g. SparseHNSW_a0.8b5, counts as the
+    subject -- alpha/beta variants are still the method under study."""
+    return m == SUBJECT or m.startswith(SUBJECT)
 
 plt.rcParams.update({
     "font.family": "sans-serif",
@@ -97,10 +104,9 @@ def order_models(rows):
     """Stable, deterministic series order: subject first, then alphabetical.
     """
     models = sorted({r["Model"] for r in rows})
-    if SUBJECT in models:
-        models.remove(SUBJECT)
-        models.insert(0, SUBJECT)
-    return models
+    subj = [m for m in models if is_subject_model(m)]
+    rest = [m for m in models if not is_subject_model(m)]
+    return subj + rest
 
 
 def style(models):
@@ -180,8 +186,8 @@ def emphasis_scatter(rows, models, st, ycol, ylabel, title, out,
                 best[key] = r
         if not best:
             continue
-        is_subject = (m == SUBJECT)
-        color = SERIES[0] if is_subject else "#b8b7b0"
+        is_subject = is_subject_model(m)
+        color = st[m][0] if is_subject else "#b8b7b0"
         marker = st[m][1]
         xs = [num(r, "Recall") for r in best.values()]
         ys = [num(r, ycol) for r in best.values()]

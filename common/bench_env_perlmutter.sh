@@ -51,8 +51,38 @@ export SPKNN_ARCH=znver3
 export SPKNN_PLAYGROUND=/global/homes/d/dhaura/repos/SpKNN/spknn-playground
 export SPKNN_HNSW_REPO=$SCRATCH/repos/sparse_hnsw/minimal_hnsw
 export SPKNN_BIN="$SPKNN_HNSW_REPO/build/bin"
-export SPKNN_DATA="$SPKNN_HNSW_REPO/sparse/data/msmarco_full"
 export SPKNN_VENV=$SCRATCH/benchmarks/SpKNN/bench-venv-perlmutter
+
+# --- dataset selection -----------------------------------------------------
+export SPKNN_DATASET=${SPKNN_DATASET:-msmarco_full}
+case "$SPKNN_DATASET" in
+    msmarco_full)
+        export SPKNN_DATA="$SPKNN_HNSW_REPO/sparse/data/msmarco_full"
+        export SPKNN_BASE="$SPKNN_DATA/base_full.csr"
+        export SPKNN_QUERIES="$SPKNN_DATA/queries.dev.csr"
+        export SPKNN_GT="$SPKNN_DATA/base_full.dev.gt"
+        export SPKNN_NDOCS=8841823          # 6980 queries, dim 30109
+        ;;
+    nq_splade)
+        export SPKNN_DATA="$SPKNN_HNSW_REPO/sparse/data/nq_splade"
+        export SPKNN_BASE="$SPKNN_DATA/base_nq.csr"
+        export SPKNN_QUERIES="$SPKNN_DATA/queries.test.csr"
+        export SPKNN_GT="$SPKNN_DATA/base_nq.test.gt"
+        export SPKNN_NDOCS=2680893          # 3452 queries, dim 30522
+        ;;
+    *)
+        echo "bench_env: unknown SPKNN_DATASET='$SPKNN_DATASET'" >&2
+        echo "           known: msmarco_full, nq_splade" >&2
+        return 1 2>/dev/null || exit 1
+        ;;
+esac
+export SPKNN_OUT_ROOT=${SPKNN_OUT_ROOT:-$SCRATCH/datasets/SpKNN/$SPKNN_DATASET}
+
+for _f in "$SPKNN_BASE" "$SPKNN_QUERIES" "$SPKNN_GT"; do
+    [ -s "$_f" ] || { echo "bench_env: FATAL missing dataset file $_f" >&2
+                      return 1 2>/dev/null || exit 1; }
+done
+unset _f
 export SPKNN_PYANNS_SRC=$SCRATCH/repos/pyanns
 export SPKNN_GRASSRMA_SRC=$SPKNN_HNSW_REPO/sparse/GrassRMA
 

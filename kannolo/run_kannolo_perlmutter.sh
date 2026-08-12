@@ -19,7 +19,7 @@ source "$PG/common/bench_env_perlmutter.sh"
 bench_provenance
 source "$SPKNN_VENV/bin/activate"
 
-OUT=${SPKNN_OUT:-$SCRATCH/datasets/SpKNN/kannolo}
+OUT=${SPKNN_OUT:-$SPKNN_OUT_ROOT/kannolo}
 mkdir -p "$OUT/indices"
 rm -f "$OUT/kannolo_results.csv"
 
@@ -27,8 +27,8 @@ $BENCH_LAUNCH stdbuf -oL -eL python3 kannolo_mt_ex.py \
     -m "${M:-32}" -ef_construction "${EFC:-200}" \
     -ef_list "${EF_LIST:-10,20,50,100,200,400,800,1600,3200}" \
     -repeats "${REPEATS:-5}" -warmup "${WARMUP:-1}" \
-    -input  "$SPKNN_DATA/base_full.csr" \
-    -query  "$SPKNN_DATA/queries.dev.csr" \
-    -gt     "$SPKNN_DATA/base_full.dev.gt" \
-    -index  "$OUT/indices/msmarco_full_m${M:-32}_efc${EFC:-200}.index" \
+    -input  "$SPKNN_BASE" \
+    -query  "$SPKNN_QUERIES" \
+    -gt     "$SPKNN_GT" \
+    -index  "$OUT/indices/${SPKNN_DATASET}_m${M:-32}_efc${EFC:-200}.index" \
     -csv    "$OUT/kannolo_results.csv"

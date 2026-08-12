@@ -28,6 +28,37 @@ bash common/submit_full_benchmark_perlmutter.sh
 # AFTER_JOB=<jobid> ...     to chain behind another job
 ```
 
+### Choosing the dataset
+
+`SPKNN_DATASET` selects it (default `msmarco_full`); `bench_env_perlmutter.sh`
+derives the base/query/GT paths and the document count from it, and rejects an
+unknown name rather than silently falling back.
+
+| | `msmarco_full` | `nq_splade` |
+|---|---|---|
+| docs | 8,841,823 | 2,680,893 |
+| dim | 30,109 | 30,522 |
+| avg nnz/doc | ~126 | 153.6 |
+| queries | 6,980 (`queries.dev.csr`) | 3,452 (`queries.test.csr`) |
+| base | `base_full.csr` | `base_nq.csr` |
+| ground truth | `base_full.dev.gt` | `base_nq.test.gt` |
+
+```bash
+SPKNN_DATASET=nq_splade bash common/submit_full_benchmark_perlmutter.sh
+SPKNN_DATASET=nq_splade bash common/make_figures_perlmutter.sh
+```
+
+When submitting jobs by hand, put it in `--export` (its value has no comma, so
+it is safe there) — **not** as a bare env prefix you assume will carry:
+
+```bash
+sbatch --export=ALL,SPKNN_DATASET=nq_splade --job-name=nq_hnsw run_hnsw_sweep_perlmutter.sh
+# DPR must stay an env PREFIX: sbatch splits --export on commas and would
+# truncate DPR=0.0,0.1,0.2,0.3 to just "0.0" -- the job then "completes"
+# having silently run a quarter of the sweep.
+DPR=0.0,0.1,0.2,0.3 TAG=a sbatch --export=ALL,SPKNN_DATASET=nq_splade ... run_sindi_sweep_perlmutter.sh
+```
+
 Individually:
 
 ```bash

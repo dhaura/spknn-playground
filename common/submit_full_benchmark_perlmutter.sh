@@ -32,7 +32,7 @@ submit() {   # submit <dir> <script>
     echo "$jid"
 }
 
-echo "=== submitting method jobs (64 threads each) ==="
+echo "=== submitting method jobs (64 threads each), dataset=${SPKNN_DATASET:-msmarco_full} ==="
 IDS=()
 IDS+=("$(submit "$HNSW_SCRIPTS" run_hnsw_sweep_perlmutter.sh)")
 IDS+=("$(submit "$HNSW_SCRIPTS" run_sindi_sweep_perlmutter.sh)")
@@ -52,4 +52,4 @@ echo "=== submitted ==="
 echo "methods : ${IDS[*]}"
 echo "figures : $FIG"
 echo "watch   : squeue -u \$USER"
-echo "output  : results/msmarco_full_perlmutter/{all_points.csv,pareto.csv,figures,figures_zoom}"
+echo "output  : results/${SPKNN_DATASET:-msmarco_full}_perlmutter/{all_points.csv,pareto.csv,figures,figures_zoom}"

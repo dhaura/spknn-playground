@@ -17,11 +17,18 @@ module load python/3.11-24.1.0 2>/dev/null
 source "$PG/common/bench_env_perlmutter.sh"
 source "$SPKNN_VENV/bin/activate"
 
-DATA_ROOT=${SPKNN_DATA_ROOT:-$SCRATCH/datasets/SpKNN}
-OUT=${FIG_OUT:-results/msmarco_full_perlmutter}
+DATA_ROOT=${SPKNN_DATA_ROOT:-$SPKNN_OUT_ROOT}
+OUT=${FIG_OUT:-results/${SPKNN_DATASET}_perlmutter}
 ZOOM_XMIN=${ZOOM_XMIN:-0.8}
 
 mkdir -p "$OUT"
+
+HNSW_DIR="$DATA_ROOT/sparse_hnsw"
+if compgen -G "$HNSW_DIR/sparse_hnsw_results_*.csv" >/dev/null; then
+    echo "=== collapsing SparseHNSW alpha/beta configurations to their envelope ==="
+    python3 "$SPKNN_HNSW_REPO/sparse/scripts/combine_hnsw_envelope.py" "$HNSW_DIR"
+    echo
+fi
 
 CSVS=()
 for pat in "$DATA_ROOT"/sparse_hnsw/sparse_hnsw_results*.csv \

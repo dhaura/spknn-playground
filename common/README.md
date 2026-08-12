@@ -4,7 +4,7 @@
 
 | file | machine | purpose |
 |---|---|---|
-| `bench_env_perlmutter.sh` | Perlmutter | Sourced by every job. Threads, pinning, NUMA, ISA target, provenance, and the optimized-build guard. |
+| `bench_env_perlmutter.sh` | Perlmutter | Sourced by every job. Threads, pinning, NUMA, ISA target, **dataset selection**, provenance, and the optimized-build guard. |
 | `build_bench_venv_perlmutter.sh` | Perlmutter | Builds the venv holding all four Python-run methods, at `-march=znver3`. **Login node only** — compute nodes have no outbound network. |
 | `smoke_test_perlmutter.sh` | Perlmutter | End-to-end correctness on msmarco_small, all six methods. Run before any full sweep. |
 | `submit_full_benchmark_perlmutter.sh` | Perlmutter | Submits the whole msmarco_full benchmark: 6 method jobs + a figures job chained behind them. |
