@@ -1,100 +1,104 @@
-import sparse_hnswlib
-import numpy as np
-import argparse
-import time
+"""GrassRMA sparse-HNSW benchmark.
+"""
 
-parser = argparse.ArgumentParser(description="Run kNN search on a sparse HNSW index.")
-parser.add_argument("-n", type=int, default=100000, help="Number of elements in the index.")
-parser.add_argument("-d", type=int, default=16, help="Dimensionality of the vectors.")
-parser.add_argument("-num_threads", type=int, default=8, help="Number of threads to use for parallel processing.")
-parser.add_argument("-input", type=str, help="Path to the input CSR file.")
-parser.add_argument("-query", type=str, help="Path to the query CSR file.")
-parser.add_argument("-gt", type=str, help="Path to the ground truth file.")
-parser.add_argument("-output", type=str, help="Path to the output directory.")
+import argparse
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
+
+import numpy as np
+import sparse_hnswlib
+
+import bench_harness as bh
+
+parser = argparse.ArgumentParser(description="GrassRMA sparse-HNSW benchmark.")
+parser.add_argument("-n", type=int, required=True, help="Number of base vectors.")
+parser.add_argument("-input", required=True, help="Base CSR file (BigANN sparse format).")
+parser.add_argument("-query", required=True, help="Query CSR file.")
+parser.add_argument("-gt", required=True, help="Ground truth file.")
+parser.add_argument("-csv", required=True, help="Results CSV to append to.")
+parser.add_argument("-M", type=int, default=16)
+parser.add_argument("-ef_construction", type=int, default=200,
+                    help="Matched to the other graph methods; was hardcoded to 1000.")
+parser.add_argument("-ef_list", default="10,20,50,100,200,400,800,1600,3200")
+parser.add_argument("-k", type=int, default=10)
+parser.add_argument("-repeats", type=int, default=5)
+parser.add_argument("-warmup", type=int, default=1)
+parser.add_argument("-save_index", dest="save_index", default=None,
+                    help="Optional path; written AFTER the sweep, never before.")
 args = parser.parse_args()
 
-n = args.n
-d = args.d
-num_threads = args.num_threads
-input_path = args.input
-query_path = args.query
-gt_path = args.gt
-output_path = args.output
+threads = bh.env_threads()
+ef_list = [int(x) for x in args.ef_list.split(",") if x]
+k = args.k
 
-print("Initializing index with n =", n)
+print(f"GrassRMA | M={args.M} efC={args.ef_construction} threads={threads}", flush=True)
 
-t0 = time.time()
-p = sparse_hnswlib.Index(space="ip", dim=d)
-p.init_index(
-    max_elements=n,
-    csr_path=input_path,
-    ef_construction=1000,
-    M=16,
-)
-p.add_items(num_threads=num_threads)
-t1 = time.time()
-print(f"Index initialized in {t1 - t0:.2f} seconds.")
+# --- load ----------------------------------------------------------------
+with bh.phase("load (page-cache warm)") as p_load:
+    with open(args.input, "rb") as f:
+        while f.read(1 << 24):
+            pass
 
-print("Saving index to disk...")
-p.save_index(output_path)
-print("Index saved.")
+# --- index ---------------------------------------------------------------
+with bh.phase("index") as p_index:
+    index = sparse_hnswlib.Index(space="ip", dim=16)
+    index.init_index(
+        max_elements=args.n,
+        csr_path=args.input,
+        ef_construction=args.ef_construction,
+        M=args.M,
+    )
+    index.add_items(num_threads=threads)
 
-# print("Loading index from disk...")
-# p.load_index(output_path, n)
-# print("Index loaded.")
+print(f"  peak RSS after indexing: {bh.peak_rss_gb():.1f} GB", flush=True)
 
-def knn_result_read(fname):
-    n, d = map(int, np.fromfile(fname, dtype="uint32", count=2))
-    f = open(fname, "rb")
-    f.seek(4+4)
-    I = np.fromfile(f, dtype="int32", count=n * d).reshape(n, d)
-    D = np.fromfile(f, dtype="float32", count=n * d).reshape(n, d)
-    return I, D
-  
-def mmap_sparse_matrix_fields(fname):
-    """ mmap the fields of a CSR matrix without instanciating it """
-    with open(fname, "rb") as f:
-        sizes = np.fromfile(f, dtype='int64', count=3)
-        nrow, ncol, nnz = sizes
-    ofs = sizes.nbytes
-    indptr = np.memmap(fname, dtype='int64', mode='r', offset=ofs, shape=nrow + 1)
-    ofs += indptr.nbytes
-    indices = np.memmap(fname, dtype='int32', mode='r', offset=ofs, shape=nnz)
-    ofs += indices.nbytes
-    data = np.memmap(fname, dtype='float32', mode='r', offset=ofs, shape=nnz)
-    return data, indices, indptr, ncol
+# --- queries + ground truth ----------------------------------------------
+q_indptr, q_indices, q_data, _ = bh.read_bigann_csr(args.query)
+gt = bh.read_gt(args.gt)
+n_queries = gt.shape[0]
+if len(q_indptr) - 1 != n_queries:
+    sys.exit(f"query file has {len(q_indptr) - 1} rows but gt has {n_queries}")
 
-data, indices, indptr, _ = mmap_sparse_matrix_fields(query_path)
+print(f"  {n_queries} queries, k={k}, sweeping ef over {ef_list}\n", flush=True)
 
-I, _ = knn_result_read(gt_path)
+# --- sweep ---------------------------------------------------------------
+rows = []
+for ef in ef_list:
+    if ef < k:
+        print(f"  skipping ef={ef} (< k={k})", flush=True)
+        continue
+    index.set_ef(ef)
 
-for ef in range(48, 450, 50):
-    print(f"Setting ef to {ef}...")
-    p.set_ef(ef)
-    
-    print("Running kNN query...")
-    start = time.time()
-    res, distances = p.knn_query(indptr, indices, data, k=10, num_threads=num_threads)
-    end = time.time()
-    print("kNN query completed.")
+    def run():
+        return index.knn_query(q_indptr, q_indices, q_data, k=k, num_threads=threads)
 
-    elapsed = end - start
-    intersection_sizes = np.array([np.intersect1d(row1, row2).size for row1, row2 in zip(I, res)])
-    print(f'Elapsed time: {elapsed}; {round(I.shape[0] /elapsed, 2)} QPS')
-    print(f'Recall: {np.sum(intersection_sizes) / (I.shape[0] * I.shape[1]) * 100}')
+    (pred, dists), med, times = bh.timed_search(
+        run, repeats=args.repeats, warmup=args.warmup, label=f"ef={ef}"
+    )
+    ordered = bh.check_sorted_by_score(dists, "GrassRMA")
 
-    rr_at_10 = 0.0
-    for gt, pred in zip(I, res):
-        # Find the first relevant item in the top-10 predictions
-        found = False
-        for rank, item in enumerate(pred[:10], start=1):
-            if item in gt:
-                rr_at_10 += 1.0 / rank
-                found = True
-                break
-        if not found:
-            rr_at_10 += 0.0
+    row = bh.make_row(
+        model="GrassRMA",
+        params=f"M={args.M} efC={args.ef_construction} ef={ef}",
+        threads=threads,
+        gt=gt,
+        pred=np.asarray(pred),
+        k=k,
+        index_sec=p_index.sec,
+        load_sec=p_load.sec,
+        convert_sec=0.0,
+        search_times=times,
+        results_ordered=ordered,
+    )
+    bh.print_point(row)
+    rows.append(row)
 
-    rr_at_10 /= I.shape[0]
-    print(f'RR@10: {rr_at_10:.4f}\n')
+if args.save_index:
+    with bh.phase("save index"):
+        index.save_index(args.save_index)
+    for r in rows:
+        r.IndexBytes = bh.path_bytes(args.save_index)
 
+bh.write_rows(args.csv, rows)

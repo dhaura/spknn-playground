@@ -1,3 +1,7 @@
+"""DEPRECATED
+"""
+
+import os
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
@@ -10,7 +14,8 @@ parser.add_argument("-output_file", type=str, help="Path to save the output PDF 
 args = parser.parse_args()
 
 # Load the CSV file
-df = pd.read_csv(f"~/repos/SpKNN/spknn-playground/results/{args.input_file}")
+results_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "results")
+df = pd.read_csv(os.path.join(results_dir, args.input_file))
 
 # Drop unnamed index column if present
 df = df.loc[:, ~df.columns.str.contains('^Unnamed')]

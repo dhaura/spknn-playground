@@ -1,11 +1,10 @@
+"""Convert BigANN .csr files to the Seismic/kANNolo .bin layout.
+"""
+
 import argparse
 
 import numpy as np
 
-parser = argparse.ArgumentParser(description="Convert BigANN .csr files to Seismic/kANNolo .bin files.")
-parser.add_argument("-file_path", type=str, required=True)
-parser.add_argument("-output_path", type=str, required=True)
-args = parser.parse_args()
 
 def convert_csr_to_bin(csr_file_path, bin_file_path, chunk_rows=500_000):
     with open(csr_file_path, "rb") as f:
@@ -42,4 +41,10 @@ def convert_csr_to_bin(csr_file_path, bin_file_path, chunk_rows=500_000):
     print(f"Wrote {bin_file_path}")
 
 
-convert_csr_to_bin(args.file_path, args.output_path)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Convert BigANN .csr files to Seismic/kANNolo .bin files.")
+    parser.add_argument("-file_path", type=str, required=True)
+    parser.add_argument("-output_path", type=str, required=True)
+    args = parser.parse_args()
+    convert_csr_to_bin(args.file_path, args.output_path)

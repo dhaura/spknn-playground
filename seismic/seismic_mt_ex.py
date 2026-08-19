@@ -1,109 +1,139 @@
+"""SEISMIC benchmark.
+"""
+
 import argparse
-import csv
 import os
 import sys
-import time
 
-parser = argparse.ArgumentParser(description="Multithreaded Seismic raw-index benchmark.")
-parser.add_argument("-input", type=str, help="Path to the base .bin file (Seismic inner format).")
-parser.add_argument("-query", type=str, help="Path to the query .bin file (Seismic inner format).")
-parser.add_argument("-gt", type=str, help="Path to the BigANN ground truth file.")
-parser.add_argument("-index", type=str, help="Index path: loaded if it exists, else built and saved here.")
-parser.add_argument("-num_threads", type=int, default=64, help="Threads for build and batch search.")
-parser.add_argument("-k", type=int, default=10)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common"))
+
+import bench_harness as bh
+
+parser = argparse.ArgumentParser(description="SEISMIC sparse benchmark.")
+parser.add_argument("-input", required=True, help="Base CSR file (BigANN sparse format).")
+parser.add_argument("-query", required=True, help="Query CSR file (BigANN sparse format).")
+parser.add_argument("-gt", required=True, help="Ground truth file.")
+parser.add_argument("-csv", required=True, help="Results CSV to append to.")
+parser.add_argument("-bin_dir", required=True, help="Where the converted .bin files live.")
+parser.add_argument("-index", default=None,
+                    help="If it exists, load it (search-only run). Else build and save here.")
 parser.add_argument("-n_postings", type=int, default=3500)
 parser.add_argument("-summary_energy", type=float, default=0.4)
-parser.add_argument("-csv", type=str, help="Optional path to append results as CSV rows.")
+parser.add_argument("-k", type=int, default=10)
+parser.add_argument("-repeats", type=int, default=5)
+parser.add_argument("-warmup", type=int, default=1)
+parser.add_argument("-sweep", default="3:0.9,5:0.9,10:0.9,10:0.8,20:0.8,20:0.7,30:0.7",
+                    help="Comma-separated query_cut:heap_factor pairs.")
 args = parser.parse_args()
 
-os.environ["RAYON_NUM_THREADS"] = str(args.num_threads)
+threads = bh.env_threads()
+os.environ.setdefault("RAYON_NUM_THREADS", str(threads))
 
-import numpy as np  # noqa: E402
-from seismic import SeismicIndexRaw  # noqa: E402
+import numpy as np
+from seismic import SeismicIndexRaw
 
-
-def knn_result_read(fname):
-    n, d = map(int, np.fromfile(fname, dtype="uint32", count=2))
-    with open(fname, "rb") as f:
-        f.seek(8)
-        I = np.fromfile(f, dtype="int32", count=n * d).reshape(n, d)
-    return I
-
-
-def rr_at_k(gt, pred, k):
-    total = 0.0
-    for g, p in zip(gt, pred):
-        g_set = set(g.tolist())
-        for rank, item in enumerate(p[:k], start=1):
-            if item in g_set:
-                total += 1.0 / rank
-                break
-    return total / gt.shape[0]
-
-
-indexing_time = 0.0
-if args.index and os.path.exists(args.index):
-    print(f"Loading index from {args.index}...")
-    t0 = time.time()
-    index = SeismicIndexRaw.load(args.index)
-    print(f"Index loaded in {time.time() - t0:.2f} seconds.")
-else:
-    print(f"Building index from {args.input} (n_postings={args.n_postings}, "
-          f"summary_energy={args.summary_energy}, {args.num_threads} rayon threads)...")
-    t0 = time.time()
-    index = SeismicIndexRaw.build(
-        args.input, n_postings=args.n_postings, summary_energy=args.summary_energy
-    )
-    indexing_time = time.time() - t0
-    print(f"Index built in {indexing_time:.2f} seconds.")
-    if args.index:
-        index.save(args.index)
-        print(f"Index saved to {args.index}")
-
-I = knn_result_read(args.gt)
-n_queries = I.shape[0]
 k = args.k
-nt = args.num_threads
-print(f"{n_queries} queries, k={k}, RAYON_NUM_THREADS={nt}")
+sweep = []
+for pair in args.sweep.split(","):
+    qc, hf = pair.split(":")
+    sweep.append((int(qc), float(hf)))
 
+print(f"SEISMIC | n_postings={args.n_postings} summary_energy={args.summary_energy} "
+      f"threads={threads} (RAYON_NUM_THREADS={os.environ['RAYON_NUM_THREADS']})", flush=True)
 
-def run(query_cut, heap_factor):
-    start = time.time()
-    # num_threads below is the broken no-op parameter; RAYON_NUM_THREADS rules.
-    results = index.batch_search(
-        args.query, k, query_cut, heap_factor, 0, True, num_threads=nt
-    )
-    elapsed = time.time() - start
-    ids = np.array([[doc for _, doc in r] + [-1] * (k - len(r)) for r in results], dtype=np.int64)
-    return ids, elapsed
+os.makedirs(args.bin_dir, exist_ok=True)
+base_bin = os.path.join(args.bin_dir, "base.bin")
+query_bin = os.path.join(args.bin_dir, "queries.bin")
 
+# --- convert -------------------------------------------------------------
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "utilities"))
+convert_sec = 0.0
+todo = [(args.input, base_bin), (args.query, query_bin)]
+missing = [(src, dst) for src, dst in todo if not os.path.exists(dst)]
+if missing:
+    from convert_csr_to_bin import convert_csr_to_bin  # noqa: E402
+    with bh.phase("convert csr -> bin") as p_conv:
+        for src, dst in missing:
+            print(f"    {src} -> {dst}", flush=True)
+            convert_csr_to_bin(src, dst)
+    convert_sec = p_conv.sec
+else:
+    print("  .bin files already present; ConvertSec reported as 0 "
+          "(re-run with a clean -bin_dir to measure it)", flush=True)
 
-print("Warm-up pass...")
-run(10, 0.8)
+# --- load + index --------------------------------------------------------
+load_sec = 0.0
+index_sec = 0.0
+
+if args.index and os.path.exists(args.index):
+    print(f"  loading existing index {args.index} (search-only run)", flush=True)
+    with bh.phase("load index"):
+        index = SeismicIndexRaw.load(args.index)
+else:
+    # build() reads base_bin itself; warm the cache and charge it to LoadSec.
+    with bh.phase("load (page-cache warm)") as p_load:
+        with open(base_bin, "rb") as f:
+            while f.read(1 << 24):
+                pass
+    load_sec = p_load.sec
+
+    with bh.phase("index") as p_index:
+        index = SeismicIndexRaw.build(
+            base_bin, n_postings=args.n_postings, summary_energy=args.summary_energy
+        )
+    index_sec = p_index.sec
+
+    if args.index:
+        with bh.phase("save index"):
+            index.save(args.index)
+
+print(f"  peak RSS after indexing: {bh.peak_rss_gb():.1f} GB", flush=True)
+
+gt = bh.read_gt(args.gt)
+n_queries = gt.shape[0]
+print(f"  {n_queries} queries, k={k}, {len(sweep)} sweep points\n", flush=True)
+
+index_bytes = bh.path_bytes(args.index)
 
 rows = []
-for query_cut, heap_factor in [
-    (3, 0.9), (5, 0.9), (10, 0.9), (10, 0.8), (20, 0.8), (20, 0.7), (30, 0.7),
-]:
-    print(f"Setting query_cut={query_cut}, heap_factor={heap_factor}...")
-    res, elapsed = run(query_cut, heap_factor)
-    intersections = np.array([np.intersect1d(a, b).size for a, b in zip(I[:, :k], res)])
-    recall = intersections.sum() / (I.shape[0] * k)
-    rr = rr_at_k(I[:, :k], res, k)
-    qps = n_queries / elapsed
-    print(f"Elapsed: {elapsed:.4f}s; {qps:.2f} QPS at {nt} threads")
-    print(f"Recall@{k}: {recall * 100:.4f}")
-    print(f"RR@{k} (vs exact-NN gt): {rr:.4f}\n")
-    rows.append(("SEISMIC", nt, query_cut, heap_factor, recall, indexing_time, elapsed, qps, rr))
+for query_cut, heap_factor in sweep:
+    def run():
+        # The num_threads argument is a no-op in this build; RAYON_NUM_THREADS rules.
+        return index.batch_search(
+            query_bin, k, query_cut, heap_factor, 0, True, num_threads=threads
+        )
 
-if args.csv:
-    write_header = not os.path.exists(args.csv)
-    with open(args.csv, "a", newline="") as f:
-        w = csv.writer(f)
-        if write_header:
-            w.writerow(
-                ["Model", "Threads", "query_cut", "heap_factor", "Recall",
-                 "Indexing Time", "Searching Time (Seconds)", "QPS", "RR@10 (vs exact-NN gt)"]
-            )
-        w.writerows(rows)
-    print(f"Results appended to {args.csv}")
+    results, med, times = bh.timed_search(
+        run, repeats=args.repeats, warmup=args.warmup,
+        label=f"qc={query_cut} hf={heap_factor}",
+    )
+
+    # batch_search returns per-query lists of (score, doc_id), best first.
+    pred = np.array(
+        [[doc for _, doc in r] + [-1] * (k - len(r)) for r in results], dtype=np.int64
+    )
+    # Pad with -inf so short result lists still read as descending-by-score.
+    scores = np.array(
+        [[s for s, _ in r] + [-np.inf] * (k - len(r)) for r in results], dtype=np.float64
+    )
+    ordered = bh.check_sorted_by_score(scores, "SEISMIC")
+
+    row = bh.make_row(
+        model="SEISMIC",
+        params=f"n_postings={args.n_postings} summary_energy={args.summary_energy} "
+               f"query_cut={query_cut} heap_factor={heap_factor}",
+        threads=threads,
+        gt=gt,
+        pred=pred,
+        k=k,
+        index_sec=index_sec,
+        load_sec=load_sec,
+        convert_sec=convert_sec,
+        search_times=times,
+        index_bytes=index_bytes,
+        results_ordered=ordered,
+    )
+    bh.print_point(row)
+    rows.append(row)
+
+bh.write_rows(args.csv, rows)
