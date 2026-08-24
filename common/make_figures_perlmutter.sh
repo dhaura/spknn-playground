@@ -26,7 +26,11 @@ mkdir -p "$OUT"
 HNSW_DIR="$DATA_ROOT/sparse_hnsw"
 if compgen -G "$HNSW_DIR/sparse_hnsw_results_*.csv" >/dev/null; then
     echo "=== collapsing SparseHNSW alpha/beta configurations to their envelope ==="
-    python3 "$SPKNN_HNSW_REPO/sparse/scripts/combine_hnsw_envelope.py" "$HNSW_DIR"
+    # ENVELOPE_TARGETS thins the front to one point per recall target, so the
+    # SparseHNSW series has a comparable marker density to the other methods
+    # instead of ~100 points smeared along the curve.
+    python3 "$SPKNN_HNSW_REPO/sparse/scripts/combine_hnsw_envelope.py" "$HNSW_DIR" \
+        ${ENVELOPE_TARGETS:+--targets "$ENVELOPE_TARGETS"}
     echo
 fi
 
