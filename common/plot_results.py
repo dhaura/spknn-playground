@@ -249,6 +249,12 @@ def main():
     ap.add_argument("--pareto", action="store_true",
                     help="plot only the (recall, QPS) frontier of each method, "
                          "dropping dominated points; applied to EVERY method")
+    ap.add_argument("--bin", type=float, default=None, metavar="PCT",
+                    help="thin each series to one marker per PCT recall bin "
+                         "(e.g. 0.2), keeping the highest-QPS point in each. "
+                         "Purely cosmetic: it removes overplotted markers "
+                         "without moving the curve, since the survivor of each "
+                         "bin is the best point there.")
     args = ap.parse_args()
 
     rows = read(args.input)
@@ -263,6 +269,27 @@ def main():
             print(f"  {m:<12} {len(by_model[m]):3d} points -> {len(f):3d} on the frontier")
             kept += f
         rows = kept
+
+    if args.bin:
+        by_model = defaultdict(list)
+        for r in rows:
+            by_model[r["Model"]].append(r)
+        kept = []
+        print(f"binning to one point per {args.bin}% recall (highest QPS wins):")
+        for m in sorted(by_model):
+            best = {}
+            for r in by_model[m]:
+                rec, q = num(r, "Recall"), num(r, "QPS")
+                if rec is None or q is None:
+                    continue
+                b = round(rec * 100.0 / args.bin)
+                if b not in best or q > num(best[b], "QPS"):
+                    best[b] = r
+            out = sorted(best.values(), key=lambda r: num(r, "Recall"))
+            print(f"  {m:<12} {len(by_model[m]):3d} points -> {len(out):3d} after binning")
+            kept += out
+        rows = kept
+
     os.makedirs(args.outdir, exist_ok=True)
     models = order_models(rows)
     st = style(models)

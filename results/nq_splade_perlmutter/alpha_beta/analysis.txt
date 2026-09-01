@@ -1,3 +1,7 @@
+NOTE (2026-08-31): the table below is still valid -- it is SparseHNSW's own
+alpha/beta sweep, measured under the standard bench_env binding policy. Only
+the action item at the foot of the file was superseded; see there.
+
 alpha/beta    maxRec   idx_s  RSS_GB    QPS@0.90    QPS@0.95    QPS@0.98    QPS@0.99
 ------------------------------------------------------------------------------------
 0.5/1         0.6325    86.0     4.2           -           -           -           -
@@ -90,4 +94,15 @@ recall 0.99: best 0.85/5   | top3: 0.85/5=14,994  0.9/4=14,872  0.85/6=14,771
   recall 0.99: baseline 3,087 QPS, best 0.85/5 14,994 QPS   <-- 0.85/5 is +385.7% faster
 
 CONCLUSION: 0.8/3 is NOT optimal. Better at one or more targets: 0.75/5, 0.8/6, 0.85/5.
-Rerun the ef sweep with the winner before using it in the cross-method benchmark.
+
+STATUS 2026-08-31: that action item is DONE, and in a stronger form than it
+asked for. The cross-method benchmark no longer pins one alpha/beta at all --
+combine_hnsw_envelope.py takes the per-recall best over every configuration in
+sparse_hnsw/configs/, so each recall level already uses its own winner. There
+is no single config left to "rerun with".
+
+Note also that the QPS columns here are comparable ONLY across rows of this
+table. They predate the 2026-08-31 baseline corrections, so do not read them
+against competitor numbers in ../all_points.csv -- SEISMIC, SINDI, kANNolo,
+PyANNS and GrassRMA were all under-reported before that date. Use
+../speedup_vs_baselines.csv for any cross-method comparison.

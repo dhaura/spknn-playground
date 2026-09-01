@@ -26,7 +26,7 @@ rm -f "$OUT/grassRMA_results.csv"
 $BENCH_LAUNCH stdbuf -oL -eL python3 grassRMA_ex.py \
     -n "$SPKNN_NDOCS" \
     -M "${M:-32}" -ef_construction "${EFC:-200}" \
-    -ef_list "${EF_LIST:-10,20,50,100,200,400,800,1600,3200}" \
+    -ef_list "${EF_LIST:-10,20,50,100,200,400,800,1600,3200,6400,12800}" \
     -repeats "${REPEATS:-5}" -warmup "${WARMUP:-1}" \
     -input  "$SPKNN_BASE" \
     -query  "$SPKNN_QUERIES" \

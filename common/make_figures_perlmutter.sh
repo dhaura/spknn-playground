@@ -62,11 +62,13 @@ python3 common/merge_results.py -o "$OUT/pareto.csv"    --pareto  "${CSVS[@]}"
 
 echo
 echo "=== figures (auto recall axis) ==="
-python3 common/plot_results.py -i "$OUT/pareto.csv" -o "$OUT/figures"
+python3 common/plot_results.py -i "$OUT/pareto.csv" -o "$OUT/figures" \
+    ${PLOT_BIN:+--bin "$PLOT_BIN"}
 
 echo
 echo "=== figures_zoom (recall axis from $ZOOM_XMIN) ==="
-python3 common/plot_results.py -i "$OUT/pareto.csv" -o "$OUT/figures_zoom" --xmin "$ZOOM_XMIN"
+python3 common/plot_results.py -i "$OUT/pareto.csv" -o "$OUT/figures_zoom" --xmin "$ZOOM_XMIN" \
+    ${PLOT_BIN:+--bin "$PLOT_BIN"}
 
 echo
 echo "=== produced ==="

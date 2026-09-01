@@ -17,8 +17,14 @@ parser.add_argument("-csv", required=True, help="Results CSV to append to.")
 parser.add_argument("-bin_dir", required=True, help="Where the converted .bin files live.")
 parser.add_argument("-index", default=None,
                     help="If it exists, load it (search-only run). Else build and save here.")
-parser.add_argument("-n_postings", type=int, default=3500)
-parser.add_argument("-summary_energy", type=float, default=0.4)
+parser.add_argument("-n_postings", type=int, default=3000)
+parser.add_argument("-summary_energy", type=float, default=0.5)
+parser.add_argument("-centroid_fraction", type=float, default=0.2)
+parser.add_argument("-min_cluster_size", type=int, default=2)
+parser.add_argument("-max_fraction", type=float, default=6.0)
+parser.add_argument("-doc_cut", type=int, default=15)
+parser.add_argument("-rm_index", action="store_true",
+                    help="Delete the saved index after recording its size.")
 parser.add_argument("-k", type=int, default=10)
 parser.add_argument("-repeats", type=int, default=5)
 parser.add_argument("-warmup", type=int, default=1)
@@ -39,6 +45,8 @@ for pair in args.sweep.split(","):
     sweep.append((int(qc), float(hf)))
 
 print(f"SEISMIC | n_postings={args.n_postings} summary_energy={args.summary_energy} "
+      f"centroid_fraction={args.centroid_fraction} min_cluster_size={args.min_cluster_size} "
+      f"max_fraction={args.max_fraction} doc_cut={args.doc_cut} "
       f"threads={threads} (RAYON_NUM_THREADS={os.environ['RAYON_NUM_THREADS']})", flush=True)
 
 os.makedirs(args.bin_dir, exist_ok=True)
@@ -79,7 +87,10 @@ else:
 
     with bh.phase("index") as p_index:
         index = SeismicIndexRaw.build(
-            base_bin, n_postings=args.n_postings, summary_energy=args.summary_energy
+            base_bin, n_postings=args.n_postings, summary_energy=args.summary_energy,
+            centroid_fraction=args.centroid_fraction,
+            min_cluster_size=args.min_cluster_size,
+            max_fraction=args.max_fraction, doc_cut=args.doc_cut
         )
     index_sec = p_index.sec
 
@@ -94,6 +105,9 @@ n_queries = gt.shape[0]
 print(f"  {n_queries} queries, k={k}, {len(sweep)} sweep points\n", flush=True)
 
 index_bytes = bh.path_bytes(args.index)
+if args.rm_index and args.index and os.path.exists(args.index):
+    os.remove(args.index)
+    print(f"  removed {args.index} after recording {index_bytes} bytes", flush=True)
 
 rows = []
 for query_cut, heap_factor in sweep:
@@ -121,6 +135,8 @@ for query_cut, heap_factor in sweep:
     row = bh.make_row(
         model="SEISMIC",
         params=f"n_postings={args.n_postings} summary_energy={args.summary_energy} "
+               f"centroid_fraction={args.centroid_fraction} "
+               f"max_fraction={args.max_fraction} doc_cut={args.doc_cut} "
                f"query_cut={query_cut} heap_factor={heap_factor}",
         threads=threads,
         gt=gt,

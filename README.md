@@ -77,6 +77,7 @@ Figures (also submitted automatically by `submit_full_benchmark_perlmutter.sh`):
 
 ```bash
 bash common/make_figures_perlmutter.sh            # cheap enough for a login node
+PLOT_BIN=0.2 bash common/make_figures_perlmutter.sh   # thin markers: best QPS per 0.2% recall
 # -> results/msmarco_full_perlmutter/{all_points.csv,pareto.csv,figures,figures_zoom}
 ```
 
@@ -101,12 +102,26 @@ the hardware has none — see "AVX-512" below.
 
 | method | toolchain | flags |
 |---|---|---|
-| SparseHNSW, grassRMA (C++), SINDI driver | **icpx 2025.3** | `-O3 -march=znver3 -mtune=znver3` |
+| SparseHNSW, grassRMA (C++) | **icpx 2025.3** | `-O3 -march=znver3 -mtune=znver3` |
 | GrassRMA Python bindings (`sparse_hnswlib`) | **icpx 2025.3** | `-O3 -march=znver3 -mtune=znver3` |
-| SINDI engine (`libvsag`) | gcc 14.3 | `-O3 -march=znver3 -mtune=znver3` |
+| SINDI engine (`libvsag`) **and its driver** | gcc 14.3 | `-O3 -march=znver3 -mtune=znver3` |
 | PyANNS | gcc 14.3 | `-Ofast -march=native` (= znver3 here) |
 | kANNolo | rustc nightly | `-C target-cpu=znver3`, `lto = "fat"` |
 | SEISMIC | rustc nightly | `-C target-cpu=znver3`, `lto = true` |
+
+The SINDI driver **must** be the gcc build (`build-gnu/bin/sindi_sweep`), not
+`build/bin`. Compiled by icpx it links `libiomp5` *and* the `libgomp` that
+comes with `libvsag`; under `OMP_PROC_BIND` the two OpenMP runtimes collide and
+the search loop runs ~22x slow at 64 threads, with the index build unaffected,
+so it looks like a plausible result, not a failure. `run_sindi_sweep_perlmutter.sh`
+refuses to run a binary that links `libiomp5`. Build it with:
+
+```bash
+cd $SCRATCH/repos/sparse_hnsw/minimal_hnsw
+cmake -S . -B build-gnu -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14
+cmake --build build-gnu --target sindi_sweep sindi_demo -j 16
+```
 
 ---
 

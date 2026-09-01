@@ -25,6 +25,9 @@ parser.add_argument("-ef", type=int, default=80,
 parser.add_argument("-ef_list", default=None,
                     help="Comma-separated ef values to sweep.")
 parser.add_argument("-budgets", default="0.005,0.01,0.02,0.03,0.05,0.07,0.1,0.15,0.2,0.3,0.5,0.8")
+parser.add_argument("-R", type=int, default=32, help="Graph degree (our m=32).")
+parser.add_argument("-L", type=int, default=200,
+                    help="Build search-list size (our ef_construction=200).")
 parser.add_argument("-repeats", type=int, default=5)
 parser.add_argument("-warmup", type=int, default=1)
 parser.add_argument("-no_rescore", action="store_true",
@@ -38,7 +41,7 @@ ef_list = ([int(e) for e in args.ef_list.split(",") if e]
            if args.ef_list else [args.ef])
 
 print(f"PyANNS | ef={','.join(map(str, ef_list))} threads={threads} "
-      f"rescore={not args.no_rescore}", flush=True)
+      f"rescore={not args.no_rescore} R={args.R} L={args.L}", flush=True)
 
 with bh.phase("load (page-cache warm)") as p_load:
     with open(args.input, "rb") as f:
@@ -46,6 +49,13 @@ with bh.phase("load (page-cache warm)") as p_load:
             pass
 
 with bh.phase("index") as p_index:
+    if not os.path.exists(args.index):
+        print(f"  building graph with R={args.R} L={args.L} -> {args.index}",
+              flush=True)
+        graph = pyanns.SparseHNSWIndex(args.R, args.L).build(args.input)
+        graph.save(args.index)
+    else:
+        print(f"  reusing existing graph {args.index}", flush=True)
     searcher = pyanns.SparseGrapSearcher(args.input, args.index)
 
 print(f"  peak RSS after indexing: {bh.peak_rss_gb():.1f} GB", flush=True)
@@ -108,7 +118,7 @@ for ef in ef_list:
 
         row = bh.make_row(
             model="PyANNS",
-            params=f"ef={ef} budget={budget}"
+            params=f"graph={os.path.basename(args.index)} ef={ef} budget={budget}"
                    f"{'' if not args.no_rescore else ' (unranked)'}",
             threads=threads,
             gt=gt,

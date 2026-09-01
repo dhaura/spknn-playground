@@ -21,14 +21,15 @@ source "$SPKNN_VENV/bin/activate"
 
 OUT=${SPKNN_OUT:-$SPKNN_OUT_ROOT/pyanns}
 mkdir -p "$OUT/indices"
-rm -f "$OUT/pyanns_results.csv"
+rm -f "$OUT/pyanns_results${TAG:+_$TAG}.csv"
 
 $BENCH_LAUNCH stdbuf -oL -eL python3 pyanns_ex.py \
-    -n "$SPKNN_NDOCS" -ef_list "${EF_LIST:-80,150,300,600}" \
-    -budgets "${BUDGETS:-0.005,0.01,0.02,0.03,0.05,0.07,0.1,0.15,0.2,0.3,0.5,0.8}" \
+    -n "$SPKNN_NDOCS" -ef_list "${EF_LIST:-80,150,300,600,1200,2400,4800}" \
+    -budgets "${BUDGETS:-0.005,0.01,0.02,0.03,0.05,0.07,0.1,0.15,0.2,0.3,0.5,0.8,0.9,1.0}" \
     -repeats "${REPEATS:-5}" -warmup "${WARMUP:-1}" \
     -input  "$SPKNN_BASE" \
     -query  "$SPKNN_QUERIES" \
     -gt     "$SPKNN_GT" \
-    -index  "$OUT/indices/${SPKNN_DATASET}" \
-    -csv    "$OUT/pyanns_results.csv"
+    -R "${PYANNS_R:-32}" -L "${PYANNS_L:-200}" \
+    -index  "${PYANNS_INDEX:-$OUT/indices/${SPKNN_DATASET}_R${PYANNS_R:-32}_L${PYANNS_L:-200}}" \
+    -csv    "$OUT/pyanns_results${TAG:+_$TAG}.csv"
