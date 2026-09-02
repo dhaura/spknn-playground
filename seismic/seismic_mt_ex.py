@@ -23,6 +23,18 @@ parser.add_argument("-centroid_fraction", type=float, default=0.2)
 parser.add_argument("-min_cluster_size", type=int, default=2)
 parser.add_argument("-max_fraction", type=float, default=6.0)
 parser.add_argument("-doc_cut", type=int, default=15)
+# Three settings hardcoded off/wrong until 2026-08-31:
+#   nknn / n_knn   the kNN-graph refinement of "Pairing Clustered Inverted
+#                  Indexes with k-NN Graphs" -- batch_search's n_knn argument
+#                  was pinned to 0, so that variant was never measured.
+#   sorted         docs/Guidelines.md gives sorted=False for MS MARCO; the
+#                  wrapper passed True.
+parser.add_argument("-nknn", type=int, default=0,
+                    help="Build a kNN graph with this many neighbours per doc.")
+parser.add_argument("-n_knn_list", default="0",
+                    help="Comma-separated search-time n_knn values to sweep.")
+parser.add_argument("-sorted", dest="sorted_scan", default="true",
+                    help="true|false|both")
 parser.add_argument("-rm_index", action="store_true",
                     help="Delete the saved index after recording its size.")
 parser.add_argument("-k", type=int, default=10)
@@ -98,6 +110,11 @@ else:
         with bh.phase("save index"):
             index.save(args.index)
 
+if args.nknn > 0:
+    with bh.phase(f"build knn graph (nknn={args.nknn})") as p_knn:
+        index.build_knn(args.nknn)
+    print(f"  kNN graph: {args.nknn}/doc in {p_knn.sec:.1f}s", flush=True)
+
 print(f"  peak RSS after indexing: {bh.peak_rss_gb():.1f} GB", flush=True)
 
 gt = bh.read_gt(args.gt)
@@ -109,47 +126,53 @@ if args.rm_index and args.index and os.path.exists(args.index):
     os.remove(args.index)
     print(f"  removed {args.index} after recording {index_bytes} bytes", flush=True)
 
+n_knns = [int(x) for x in args.n_knn_list.split(",") if x.strip()] if args.nknn > 0 else [0]
+sorted_opts = {"true": [True], "false": [False],
+               "both": [True, False]}[args.sorted_scan.strip().lower()]
+
 rows = []
 for query_cut, heap_factor in sweep:
-    def run():
-        # The num_threads argument is a no-op in this build; RAYON_NUM_THREADS rules.
-        return index.batch_search(
-            query_bin, k, query_cut, heap_factor, 0, True, num_threads=threads
-        )
+    for n_knn in n_knns:
+        for sorted_scan in sorted_opts:
+            def run(qc=query_cut, hf=heap_factor, nk=n_knn, sc=sorted_scan):
+                # num_threads is a no-op in this build; RAYON_NUM_THREADS rules.
+                return index.batch_search(query_bin, k, qc, hf, nk, sc,
+                                          num_threads=threads)
 
-    results, med, times = bh.timed_search(
-        run, repeats=args.repeats, warmup=args.warmup,
-        label=f"qc={query_cut} hf={heap_factor}",
-    )
+            results, med, times = bh.timed_search(
+                run, repeats=args.repeats, warmup=args.warmup,
+                label=f"qc={query_cut} hf={heap_factor} n_knn={n_knn} sorted={sorted_scan}",
+            )
 
-    # batch_search returns per-query lists of (score, doc_id), best first.
-    pred = np.array(
-        [[doc for _, doc in r] + [-1] * (k - len(r)) for r in results], dtype=np.int64
-    )
-    # Pad with -inf so short result lists still read as descending-by-score.
-    scores = np.array(
-        [[s for s, _ in r] + [-np.inf] * (k - len(r)) for r in results], dtype=np.float64
-    )
-    ordered = bh.check_sorted_by_score(scores, "SEISMIC")
+            # batch_search returns per-query lists of (score, doc_id), best first.
+            pred = np.array(
+                [[doc for _, doc in r] + [-1] * (k - len(r)) for r in results],
+                dtype=np.int64)
+            # Pad with -inf so short result lists still read as descending-by-score.
+            scores = np.array(
+                [[s for s, _ in r] + [-np.inf] * (k - len(r)) for r in results],
+                dtype=np.float64)
+            ordered = bh.check_sorted_by_score(scores, "SEISMIC")
 
-    row = bh.make_row(
-        model="SEISMIC",
-        params=f"n_postings={args.n_postings} summary_energy={args.summary_energy} "
-               f"centroid_fraction={args.centroid_fraction} "
-               f"max_fraction={args.max_fraction} doc_cut={args.doc_cut} "
-               f"query_cut={query_cut} heap_factor={heap_factor}",
-        threads=threads,
-        gt=gt,
-        pred=pred,
-        k=k,
-        index_sec=index_sec,
-        load_sec=load_sec,
-        convert_sec=convert_sec,
-        search_times=times,
-        index_bytes=index_bytes,
-        results_ordered=ordered,
-    )
-    bh.print_point(row)
-    rows.append(row)
+            row = bh.make_row(
+                model="SEISMIC",
+                params=f"n_postings={args.n_postings} summary_energy={args.summary_energy} "
+                       f"centroid_fraction={args.centroid_fraction} "
+                       f"max_fraction={args.max_fraction} doc_cut={args.doc_cut} "
+                       f"nknn={args.nknn} n_knn={n_knn} sorted={sorted_scan} "
+                       f"query_cut={query_cut} heap_factor={heap_factor}",
+                threads=threads,
+                gt=gt,
+                pred=pred,
+                k=k,
+                index_sec=index_sec,
+                load_sec=load_sec,
+                convert_sec=convert_sec,
+                search_times=times,
+                index_bytes=index_bytes,
+                results_ordered=ordered,
+            )
+            bh.print_point(row)
+            rows.append(row)
 
 bh.write_rows(args.csv, rows)

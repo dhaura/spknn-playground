@@ -21,7 +21,24 @@ source "$SPKNN_VENV/bin/activate"
 
 OUT=${SPKNN_OUT:-$SPKNN_OUT_ROOT/seismic}
 mkdir -p "$OUT/indices" "$OUT/bin"
-rm -f "$OUT/seismic_results.csv"
+CSV="$OUT/seismic_results${TAG:+_$TAG}.csv"
+rm -f "$CSV"
+case "${PRESET:-}" in
+  edge)
+    NPOST_LIST=${NPOST_LIST:-500 1000 2000 6000}
+    SENERGY_LIST=${SENERGY_LIST:-0.6 0.7 0.8}
+    CFRAC_LIST=${CFRAC_LIST:-0.2 0.3 0.4}
+    SORTED=${SORTED:-both}
+    ;;
+  knn)
+    NPOST_LIST=${NPOST_LIST:-2000 6000}
+    SENERGY_LIST=${SENERGY_LIST:-0.6}
+    CFRAC_LIST=${CFRAC_LIST:-0.2}
+    NKNN=${NKNN:-16}
+    N_KNN_LIST=${N_KNN_LIST:-0,4,8,16}
+    SORTED=${SORTED:-both}
+    ;;
+esac
 
 for NPOST in ${NPOST_LIST:-2000 3000 6000}; do
   for SENERGY in ${SENERGY_LIST:-0.4 0.5 0.6}; do
@@ -34,13 +51,15 @@ for NPOST in ${NPOST_LIST:-2000 3000 6000}; do
         -min_cluster_size "${MIN_CLUSTER:-2}" \
         -max_fraction "${MAX_FRACTION:-6}" \
         -sweep "${SEISMIC_SWEEP:-1:1.0,2:1.0,3:1.0,3:0.9,4:0.9,5:0.9,5:1.0,6:0.9,7:0.9,8:0.9,10:0.9,10:0.8,12:0.8,14:0.8,20:0.8,20:0.7,30:0.7,30:0.8,50:0.7}" \
+        -nknn "${NKNN:-0}" -n_knn_list "${N_KNN_LIST:-0}" \
+        -sorted "${SORTED:-true}" \
         -repeats "${REPEATS:-5}" -warmup "${WARMUP:-1}" ${RM_INDEX:+-rm_index} \
         -input   "$SPKNN_BASE" \
         -query   "$SPKNN_QUERIES" \
         -gt      "$SPKNN_GT" \
         -bin_dir "$OUT/bin" \
         -index   "$OUT/indices/${SPKNN_DATASET}_np${NPOST}_se${SENERGY}_cf${CFRAC}.index" \
-        -csv     "$OUT/seismic_results.csv"
+        -csv     "$CSV"
     done
   done
 done
