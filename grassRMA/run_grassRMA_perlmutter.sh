@@ -21,7 +21,7 @@ source "$SPKNN_VENV/bin/activate"
 
 OUT=${SPKNN_OUT:-$SPKNN_OUT_ROOT/grassRMA}
 mkdir -p "$OUT"
-rm -f "$OUT/grassRMA_results.csv"
+rm -f "$OUT/grassRMA_results${TAG:+_$TAG}.csv"
 
 $BENCH_LAUNCH stdbuf -oL -eL python3 grassRMA_ex.py \
     -n "$SPKNN_NDOCS" \
@@ -31,4 +31,4 @@ $BENCH_LAUNCH stdbuf -oL -eL python3 grassRMA_ex.py \
     -input  "$SPKNN_BASE" \
     -query  "$SPKNN_QUERIES" \
     -gt     "$SPKNN_GT" \
-    -csv    "$OUT/grassRMA_results.csv"
+    -csv    "$OUT/grassRMA_results${TAG:+_$TAG}.csv"

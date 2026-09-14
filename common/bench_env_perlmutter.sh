@@ -58,24 +58,44 @@ export SPKNN_DATASET=${SPKNN_DATASET:-msmarco_full}
 case "$SPKNN_DATASET" in
     msmarco_full)
         export SPKNN_DATA="$SPKNN_HNSW_REPO/sparse/data/msmarco_full"
+        export SPKNN_QSET="${SPKNN_QSET:-dev}"
         export SPKNN_BASE="$SPKNN_DATA/base_full.csr"
-        export SPKNN_QUERIES="$SPKNN_DATA/queries.dev.csr"
-        export SPKNN_GT="$SPKNN_DATA/base_full.dev.gt"
+        export SPKNN_QUERIES="$SPKNN_DATA/queries.$SPKNN_QSET.csr"
+        export SPKNN_GT="$SPKNN_DATA/base_full.$SPKNN_QSET.gt"
         export SPKNN_NDOCS=8841823          # 6980 queries, dim 30109
+        export SPKNN_NNZ=1121199371
         ;;
     nq_splade)
         export SPKNN_DATA="$SPKNN_HNSW_REPO/sparse/data/nq_splade"
+        export SPKNN_QSET="${SPKNN_QSET:-test}"
         export SPKNN_BASE="$SPKNN_DATA/base_nq.csr"
-        export SPKNN_QUERIES="$SPKNN_DATA/queries.test.csr"
-        export SPKNN_GT="$SPKNN_DATA/base_nq.test.gt"
+        export SPKNN_QUERIES="$SPKNN_DATA/queries.$SPKNN_QSET.csr"
+        export SPKNN_GT="$SPKNN_DATA/base_nq.$SPKNN_QSET.gt"
         export SPKNN_NDOCS=2680893          # 3452 queries, dim 30522
+        export SPKNN_NNZ=411886108
+        ;;
+    msmarco_v2_splade)
+        export SPKNN_DATA="$SPKNN_HNSW_REPO/sparse/data/msmarco_v2_splade"
+        export SPKNN_QSET="${SPKNN_QSET:-dev}"
+        export SPKNN_BASE="$SPKNN_DATA/base_v2_splade.csr"
+        export SPKNN_QUERIES="$SPKNN_DATA/queries.$SPKNN_QSET.csr"
+        export SPKNN_GT="$SPKNN_DATA/base_v2_splade.$SPKNN_QSET.gt"
+        export SPKNN_NDOCS=138364198        # dim 30522
+        export SPKNN_NNZ=17479047748        # 4.07x uint32 -- see SPKNN_BIG below
         ;;
     *)
         echo "bench_env: unknown SPKNN_DATASET='$SPKNN_DATASET'" >&2
-        echo "           known: msmarco_full, nq_splade" >&2
+        echo "           known: msmarco_full, nq_splade, msmarco_v2_splade" >&2
         return 1 2>/dev/null || exit 1
         ;;
 esac
+
+# --- 2^32 nnz flag ---------------------------------------------------------
+if [ "${SPKNN_NNZ:-0}" -gt 4294967295 ]; then
+    export SPKNN_BIG=1
+else
+    export SPKNN_BIG=0
+fi
 export SPKNN_OUT_ROOT=${SPKNN_OUT_ROOT:-$SCRATCH/datasets/SpKNN/$SPKNN_DATASET}
 
 for _f in "$SPKNN_BASE" "$SPKNN_QUERIES" "$SPKNN_GT"; do

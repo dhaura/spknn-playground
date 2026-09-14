@@ -21,7 +21,7 @@ source "$SPKNN_VENV/bin/activate"
 
 OUT=${SPKNN_OUT:-$SPKNN_OUT_ROOT/kannolo}
 mkdir -p "$OUT/indices"
-rm -f "$OUT/kannolo_results.csv"
+rm -f "$OUT/kannolo_results${TAG:+_$TAG}.csv"
 
 $BENCH_LAUNCH stdbuf -oL -eL python3 kannolo_mt_ex.py \
     -m "${M:-32}" -ef_construction "${EFC:-200}" \
@@ -32,4 +32,4 @@ $BENCH_LAUNCH stdbuf -oL -eL python3 kannolo_mt_ex.py \
     -query  "$SPKNN_QUERIES" \
     -gt     "$SPKNN_GT" \
     -index  "$OUT/indices/${SPKNN_DATASET}_m${M:-32}_efc${EFC:-200}.index" \
-    -csv    "$OUT/kannolo_results.csv"
+    -csv    "$OUT/kannolo_results${TAG:+_$TAG}.csv"
