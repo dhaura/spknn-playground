@@ -114,6 +114,8 @@ if args.nknn > 0:
     with bh.phase(f"build knn graph (nknn={args.nknn})") as p_knn:
         index.build_knn(args.nknn)
     print(f"  kNN graph: {args.nknn}/doc in {p_knn.sec:.1f}s", flush=True)
+    # The kNN graph is part of the searchable index, so it counts toward IndexSec.
+    index_sec += p_knn.sec
 
 print(f"  peak RSS after indexing: {bh.peak_rss_gb():.1f} GB", flush=True)
 
