@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import math
 import os
 import sys
 from collections import defaultdict
@@ -251,10 +252,10 @@ def main():
                          "dropping dominated points; applied to EVERY method")
     ap.add_argument("--bin", type=float, default=None, metavar="PCT",
                     help="thin each series to one marker per PCT recall bin "
-                         "(e.g. 0.2), keeping the highest-QPS point in each. "
-                         "Purely cosmetic: it removes overplotted markers "
-                         "without moving the curve, since the survivor of each "
-                         "bin is the best point there.")
+                         "(e.g. 0.2). Bins start at multiples of PCT and keep "
+                         "their highest-QPS point, so the best QPS at recall >= "
+                         "each bin edge is preserved; each series' "
+                         "highest-recall point is always kept.")
     args = ap.parse_args()
 
     rows = read(args.input)
@@ -282,10 +283,13 @@ def main():
                 rec, q = num(r, "Recall"), num(r, "QPS")
                 if rec is None or q is None:
                     continue
-                b = round(rec * 100.0 / args.bin)
+                b = math.floor(rec * 100.0 / args.bin + 1e-9)
                 if b not in best or q > num(best[b], "QPS"):
                     best[b] = r
-            out = sorted(best.values(), key=lambda r: num(r, "Recall"))
+            top = max((r for r in by_model[m] if num(r, "Recall") is not None and num(r, "QPS") is not None),
+                      key=lambda r: num(r, "Recall"), default=None)
+            out = sorted({id(r): r for r in list(best.values()) + ([top] if top else [])}.values(),
+                         key=lambda r: num(r, "Recall"))
             print(f"  {m:<12} {len(by_model[m]):3d} points -> {len(out):3d} after binning")
             kept += out
         rows = kept
